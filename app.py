@@ -6,7 +6,7 @@ from streamlit_gsheets import GSheetsConnection
 import requests
 
 # --- 1. 页面配置 ---
-st.set_page_config(page_title="Upside | Gemini", page_icon="✨", layout="wide")
+st.set_page_config(page_title="Upside | Gemini", page_icon="🌸", layout="wide")
 
 # --- 2. 调试：显示 Key 状态 ---
 try:
@@ -32,34 +32,45 @@ def load_data():
 def save_data(df):
     conn.update(worksheet="Sheet1", data=df)
 
-# === ✨ 核心改动：智能获取可用模型 ===
+# === ✨ 核心改动：温柔版 AI ===
 def get_ai_comment(spending, sleep, study, weight, diary):
     try:
-        # 1. 先问 Google：你有哪些模型？
+        # 1. 智能选模型 (保留这个逻辑，因为它很好用！)
         list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
         list_resp = requests.get(list_url)
         
         target_model = None
-        
         if list_resp.status_code == 200:
             models = list_resp.json().get('models', [])
-            # 自动寻找第一个名字里带 'gemini' 且支持生成的模型
             for m in models:
                 if 'gemini' in m['name'] and 'generateContent' in m.get('supportedGenerationMethods', []):
-                    target_model = m['name'] # 比如 'models/gemini-1.5-flash-001'
+                    target_model = m['name']
                     break
-        
-        # 如果没找到列表，就硬猜一个保底的
-        if not target_model:
-            target_model = "models/gemini-pro"
+        if not target_model: target_model = "models/gemini-pro"
 
-        # 2. 用找到的模型去生成点评
+        # 2. 生成点评 (这里换成了温柔夸夸剧本)
         url = f"https://generativelanguage.googleapis.com/v1beta/{target_model}:generateContent?key={api_key}"
         
+        # 👇👇👇 改动就在这里！ 👇👇👇
         prompt_text = f"""
-        你是一个毒舌但专业的“个人上市系统”AI董秘。
-        请根据今日数据点评：消费{spending}元, 睡眠{sleep}小时, 学习{study}小时, 体重{weight}kg, 日记:{diary}。
-        要求：风格犀利，类似《华尔街之狼》，100字以内。
+        你是一个温柔、充满元气、极具同理心的“生活合伙人” AI。
+        你的目标是无条件地支持和鼓励用户 (Lo)，做她最坚实的后盾。
+        
+        【今日数据】
+        - 消费: {spending} 元
+        - 睡眠: {sleep} 小时
+        - 学习: {study} 小时
+        - 体重: {weight} kg
+        - 心情日记: "{diary}"
+
+        【点评要求】
+        1. **风格**：像一个知心大姐姐或最好的闺蜜，语气温暖、可爱，多用 Emoji (✨💪🌟❤️)。
+        2. **主要策略**：
+           - 看到 **学习时间长**，要大力夸奖她的坚持和努力，告诉她离梦想（留学）又近了一步。
+           - 看到 **心情不好** (日记内容)，要第一时间给予安慰和抱抱，告诉她“没关系，休息一下也没事”。
+           - 看到 **消费多**，不要指责，要说“赚钱就是为了更好地生活，开心最重要”。
+           - 看到 **睡眠不足**，要心疼地提醒她早点休息，身体是革命的本钱。
+        3. **字数**：100字左右，简短暖心。
         """
         
         response = requests.post(url, json={"contents": [{"parts": [{"text": prompt_text}]}]}, headers={'Content-Type': 'application/json'})
@@ -67,12 +78,12 @@ def get_ai_comment(spending, sleep, study, weight, diary):
         if response.status_code == 200:
             result = response.json()
             comment = result['candidates'][0]['content']['parts'][0]['text']
-            return f"✨(使用模型: {target_model})\n{comment}"
+            return f"✨(AI: {target_model.split('/')[-1]})\n{comment}"
         else:
-            return f"AI 生成失败 ({response.status_code}): {response.text}"
+            return f"AI 掉线了 ({response.status_code})"
             
     except Exception as e:
-        return f"网络/代码错误: {str(e)}"
+        return f"出错啦: {str(e)}"
 
 def calculate_new_price(last_price, spending, sleep, study):
     change_pct = 0.0
@@ -87,7 +98,6 @@ def calculate_new_price(last_price, spending, sleep, study):
 df = load_data()
 
 if df.empty:
-    # ... 初始化逻辑 ...
     current_price = 100.0; current_change = 0.0; latest_comment = "初始化..."
     init_row = pd.DataFrame([{'date': datetime.now().strftime("%Y-%m-%d %H:%M"), 'spending':0, 'income':0, 'sleep':7, 'study':0, 'weight':70.5, 'diary':'Init', 'change':0, 'price':100, 'ai_comment':latest_comment}])
     df = pd.concat([df, init_row], ignore_index=True); save_data(df)
@@ -103,10 +113,10 @@ with st.sidebar:
     in_sleep = st.slider("睡眠", 0.0, 12.0, 7.0)
     in_weight = st.number_input("体重", value=70.5, step=0.1)
     in_study = st.slider("学习", 0.0, 12.0, 2.0)
-    in_diary = st.text_input("日记", placeholder="今日关键事件...")
+    in_diary = st.text_input("日记", placeholder="说说今天的心情...")
     
     if st.button("🚀 归档并生成研报", type="primary", use_container_width=True):
-        with st.spinner("AI 正在挑选模型并思考..."):
+        with st.spinner("AI 正在想怎么夸你..."):
             new_price, pct = calculate_new_price(current_price, in_spend, in_sleep, in_study)
             ai_reply = get_ai_comment(in_spend, in_sleep, in_study, in_weight, in_diary)
             
@@ -120,14 +130,14 @@ with st.sidebar:
             save_data(df)
         st.rerun()
 
-st.markdown(f"## ✨ Upside | Gemini")
+st.markdown(f"## 🌸 Upside | Gemini")
 c1, c2, c3 = st.columns(3)
 with c1: st.metric("💰 净资产", f"¥ {300000 + df['income'].sum() - df['spending'].sum():,.0f}")
 with c2: st.metric("股价", f"¥ {current_price:.2f}", f"{current_change:+.1f}%")
 with c3: st.metric("🏃‍♀️ 体重", f"{df.iloc[-1]['weight']} kg")
 
-st.markdown("### 📈 市值走势")
+st.markdown("### 📈 成长曲线")
 st.line_chart(df, x='date', y='price')
 
-# 显示最新的点评
-st.info(f"🤖 **Gemini 董秘点评**：\n\n{latest_comment}")
+# 这里的背景色我也换成了温柔的蓝色
+st.info(f"💌 **来自 Gemini 的信**：\n\n{latest_comment}")
