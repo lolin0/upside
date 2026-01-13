@@ -12,7 +12,7 @@ st.set_page_config(page_title="Upside | Gemini", page_icon="✨", layout="wide")
 # A. 连接设置
 conn = st.connection("gsheets", type=GSheetsConnection)
 genai.configure(api_key=st.secrets["google_ai"]["api_key"])
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-pro')
 
 # B. 定义加载函数 (必须在调用前定义!)
 def load_data():
