@@ -32,7 +32,7 @@ def get_ai_comment(spending, sleep, study, weight, diary):
     api_key = st.secrets["google_ai"]["api_key"]
     
     # 构造请求 URL (使用 gemini-1.5-flash)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
     
     # 构造提示词
     prompt_text = f"""
