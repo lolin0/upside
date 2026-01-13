@@ -3,18 +3,17 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
-import google.generativeai as genai
+import requests # 👈 换成了这个万能库
+import json
 
 # --- 1. 页面配置 ---
 st.set_page_config(page_title="Upside | Gemini", page_icon="✨", layout="wide")
 
-# --- 2. 核心逻辑与函数定义 ---
-# A. 连接设置
+# --- 2. 核心逻辑 ---
+# A. 连接 Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
-genai.configure(api_key=st.secrets["google_ai"]["api_key"])
-model = genai.GenerativeModel('gemini-pro')
 
-# B. 定义加载函数 (必须在调用前定义!)
+# B. 定义加载函数
 def load_data():
     try:
         df = conn.read(worksheet="Sheet1", ttl=0)
@@ -22,23 +21,49 @@ def load_data():
              df['date'] = df['date'].astype(str)
         return df
     except Exception:
-        # 如果连不上或表不存在，返回空结构
         return pd.DataFrame(columns=['date', 'spending', 'income', 'sleep', 'study', 'weight', 'diary', 'change', 'price', 'ai_comment'])
 
 def save_data(df):
     conn.update(worksheet="Sheet1", data=df)
 
+# C. 【核心修改】使用 REST API 直接调用 Gemini (不依赖 SDK)
 def get_ai_comment(spending, sleep, study, weight, diary):
-    prompt = f"""
+    # 从 secrets 获取 Key
+    api_key = st.secrets["google_ai"]["api_key"]
+    
+    # 构造请求 URL (使用 gemini-1.5-flash)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    
+    # 构造提示词
+    prompt_text = f"""
     你是一个严厉但幽默的“个人上市系统”AI董秘。根据今日数据进行犀利点评。
     数据：消费{spending}元, 睡眠{sleep}h, 学习{study}h, 体重{weight}kg, 日记:{diary}
     要求：风格像《华尔街之狼》投资人，毒舌但切中要害。100字以内。
     """
+    
+    # 构造请求体
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt_text}]
+        }]
+    }
+    
     try:
-        return model.generate_content(prompt).text
+        # 发送 HTTP POST 请求
+        response = requests.post(url, json=payload, headers={'Content-Type': 'application/json'})
+        
+        # 解析结果
+        if response.status_code == 200:
+            result = response.json()
+            # 提取 AI 回复的文本
+            return result['candidates'][0]['content']['parts'][0]['text']
+        else:
+            return f"AI 罢工了 (状态码: {response.status_code}, 错误: {response.text})"
+            
     except Exception as e:
-        return f"AI 离线中 ({str(e)})"
+        return f"网络连接失败 ({str(e)})"
 
+# 股价计算逻辑
 def calculate_new_price(last_price, spending, sleep, study):
     change_pct = 0.0
     if study > 0: change_pct += (study * 0.5)
@@ -49,28 +74,23 @@ def calculate_new_price(last_price, spending, sleep, study):
     new_price = last_price * (1 + change_pct / 100)
     return new_price, change_pct
 
-# --- 3. 执行逻辑 (修复版) ---
-# 现在开始调用上面的函数
+# --- 3. 执行逻辑 ---
 df = load_data()
 
-# 核心修复：处理空表情况
+# 初始化逻辑
 if df.empty:
     current_price = 100.0
     current_change = 0.0
     total_study = 0.0
     latest_comment = "系统初始化完成，等待首日数据..."
-    
-    # 自动创建第一行种子数据
     init_row = pd.DataFrame([{
         'date': datetime.now().strftime("%Y-%m-%d %H:%M"),
         'spending': 0, 'income': 0, 'sleep': 7.0, 'study': 0.0,
         'weight': 70.5, 'diary': 'System Init', 'change': 0.0, 'price': 100.0, 
         'ai_comment': latest_comment
     }])
-    # 存入 DataFrame 并写回 Google Sheets
     df = pd.concat([df, init_row], ignore_index=True)
     save_data(df)
-
 else:
     current_price = float(df.iloc[-1]['price'])
     current_change = float(df.iloc[-1]['change'])
@@ -80,7 +100,7 @@ else:
     else:
         latest_comment = "暂无研报"
 
-# --- 4. UI 界面渲染 ---
+# --- 4. UI 界面 ---
 st.markdown("""
 <style>
     .stApp {background: #fff;} .block-container{padding-top:1.5rem;}
@@ -109,7 +129,9 @@ with st.sidebar:
     if st.button("🚀 归档并生成研报", use_container_width=True, type="primary"):
         with st.spinner("Gemini 正在分析..."):
             new_price, pct = calculate_new_price(current_price, in_spend, in_sleep, in_study)
+            # 调用新的 REST API 函数
             ai_reply = get_ai_comment(in_spend, in_sleep, in_study, in_weight, in_diary)
+            
             new_row = {
                 'date': datetime.now().strftime("%Y-%m-%d %H:%M"),
                 'spending': in_spend, 'income': in_income, 'sleep': in_sleep,
