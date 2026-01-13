@@ -6,7 +6,7 @@ from datetime import datetime
 
 # --- 1. 页面配置 ---
 st.set_page_config(
-    page_title="Upside | Lo's Dashboard",
+    page_title="Upside | Lolin's Dashboard",
     page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded"
